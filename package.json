@@ -1,0 +1,22 @@
+{
+  "name": "arynox-ai-hire",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-Powered Technical Hiring & Project Verification",
+  "scripts": {
+    "setup": "npm install && cd frontend && npm install && cd ../server && npm install",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "npm run build:server && npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:server": "cd server && npm run build",
+    "lint": "cd frontend && npm run lint",
+    "typecheck": "cd frontend && npm run typecheck && cd ../server && npm run typecheck",
+    "test": "cd server && npm test",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "arynox-ai-hire-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "14.2.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "@tanstack/react-query": "^5.64.2",
+    "react-hook-form": "^7.54.2",
+    "@hookform/resolvers": "^3.9.1",
+    "zod": "^3.24.2",
+    "recharts": "^2.15.1",
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^0.469.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0",
+    "class-variance-authority": "^0.7.1",
+    "date-fns": "^4.1.0",
+    "react-hot-toast": "^2.4.1",
+    "three": "^0.172.0",
+    "@react-three/fiber": "^8.17.14",
+    "@react-three/drei": "^9.121.4",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "@types/node": "^22.10.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.172.0",
+    "tailwindcss": "^3.4.17",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.21"
+  }
+}

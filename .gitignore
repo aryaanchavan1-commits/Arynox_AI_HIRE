@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+Thumbs.db
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+.turbo/
+.vercel/
+supabase/.temp/
