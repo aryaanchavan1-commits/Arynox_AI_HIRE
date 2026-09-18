@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 import psycopg2
 import psycopg2.extras
 import uuid
@@ -6,8 +7,12 @@ import json
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
+from dotenv import load_dotenv
+from pathlib import Path
 
-NEON_URL = "postgresql://neondb_owner:npg_ID45rdGecZNB@ep-wild-tooth-b4ejmq8j-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+NEON_URL = os.getenv("DATABASE_URL", "")
 
 
 def _uuid() -> str:
