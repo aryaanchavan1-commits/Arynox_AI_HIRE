@@ -51,16 +51,17 @@ export default function PracticePage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a12] p-4 text-white">
-      <div className="pointer-events-none absolute -top-32 left-1/3 h-96 w-96 rounded-full bg-indigo-600/20 blur-[130px]" />
-      <div className="pointer-events-none absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-purple-600/15 blur-[130px]" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#07070d] p-4 text-white noise">
+      <div className="pointer-events-none absolute -top-32 left-1/3 h-96 w-96 rounded-full bg-indigo-600/25 blur-[130px] animate-aurora" />
+      <div className="pointer-events-none absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-fuchsia-600/15 blur-[130px] animate-aurora" style={{ animationDelay: "-7s" }} />
+      <div className="absolute inset-0 bg-grid-fade" />
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 w-full max-w-lg"
       >
-        <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-xl">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 shadow-2xl backdrop-blur-xl">
           <div className="mb-6 flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30">
               <Mic className="h-5 w-5 text-white" />
@@ -133,7 +134,7 @@ export default function PracticePage() {
             <button
               onClick={startPractice}
               disabled={starting}
-              className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-500/25 transition-all hover:opacity-95 disabled:opacity-50"
+              className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 py-4 text-sm font-semibold text-white shadow-glow transition-all hover:shadow-glow-lg disabled:opacity-50"
             >
               {starting ? (
                 <>
