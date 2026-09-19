@@ -57,6 +57,8 @@ export function useInterviewSession({
 
   const wsRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speakTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectRef = useRef<number>(0);
   // Refs so callbacks never read stale state
   const phaseRef = useRef<InterviewPhase>("initializing");
@@ -104,14 +106,8 @@ export function useInterviewSession({
           ]);
           setTranscript((prev) => [...prev, { role: "ai", content: text, timestamp: new Date().toISOString() }]);
 
-          // After AI finishes speaking, switch to listening
-          const estimatedDuration = Math.max(2000, text.length * 50);
-          setTimeout(() => {
-            if (phaseRef.current !== "completed" && phaseRef.current !== "error") {
-              updatePhase("listening");
-              setAvatarState("listening");
-            }
-          }, estimatedDuration);
+          // Play the AI's voice; when it ends, switch to listening
+          playAiAudio(payload?.audio, text);
           break;
         }
 
@@ -127,6 +123,7 @@ export function useInterviewSession({
         }
 
         case "complete": {
+          stopAiAudio();
           updatePhase("completed");
           setAvatarState("idle");
           if (timerRef.current) {
@@ -153,6 +150,7 @@ export function useInterviewSession({
         }
 
         case "interrupt": {
+          stopAiAudio();
           setAvatarState("listening");
           updatePhase("listening");
           break;
@@ -224,6 +222,61 @@ export function useInterviewSession({
     };
   }, [interviewId, candidateId, invitationToken, handleMessage, updatePhase]);
 
+  /** Play base64 AI audio; fall back to estimated timing if TTS unavailable. */
+  const playAiAudio = useCallback(
+    (base64Audio: string | undefined, fallbackText: string) => {
+      stopAiAudio();
+      if (base64Audio) {
+        try {
+          const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+          audioRef.current = audio;
+          audio.onended = () => {
+            if (phaseRef.current !== "completed" && phaseRef.current !== "error") {
+              updatePhase("listening");
+              setAvatarState("listening");
+            }
+          };
+          audio.onerror = () => {
+            // Fall back to text-length timing if playback fails
+            scheduleFallbackListening(fallbackText);
+          };
+          audio.play().catch(() => scheduleFallbackListening(fallbackText));
+          return;
+        } catch {
+          /* fall through to timing fallback */
+        }
+      }
+      scheduleFallbackListening(fallbackText);
+    },
+    [updatePhase]
+  );
+
+  const scheduleFallbackListening = useCallback(
+    (text: string) => {
+      const estimatedDuration = Math.max(2500, Math.min(15000, text.length * 55));
+      speakTimeoutRef.current = setTimeout(() => {
+        if (phaseRef.current !== "completed" && phaseRef.current !== "error" && phaseRef.current === "speaking") {
+          updatePhase("listening");
+          setAvatarState("listening");
+        }
+      }, estimatedDuration);
+    },
+    [updatePhase]
+  );
+
+  const stopAiAudio = useCallback(() => {
+    if (speakTimeoutRef.current) {
+      clearTimeout(speakTimeoutRef.current);
+      speakTimeoutRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+  }, []);
+
   const sendAnswer = useCallback(
     (text: string) => {
       const ws = wsRef.current;
@@ -284,8 +337,9 @@ export function useInterviewSession({
     }
   }, [updatePhase]);
 
-  // Full teardown: close socket, cancel timers
+  // Full teardown: close socket, cancel timers, stop audio
   const destroy = useCallback(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     intentionallyClosedRef.current = true;
     connectingRef.current = false;
     if (connectTimeoutRef.current) {
@@ -296,6 +350,7 @@ export function useInterviewSession({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    stopAiAudio();
     const ws = wsRef.current;
     if (ws) {
       ws.onclose = null;

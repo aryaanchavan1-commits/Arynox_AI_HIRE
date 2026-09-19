@@ -5,15 +5,15 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Briefcase, Users, Video, FileCheck, FolderGit2,
-  FileBarChart, BarChart3, CreditCard, Settings, LogOut, Smile,
+  FileBarChart, BarChart3, CreditCard, Settings, LogOut, Radio,
 } from "lucide-react";
 
 const navItems = [
   { href: "/recruiter/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/recruiter/interviews", label: "Interviews", icon: Video },
+  { href: "/recruiter/monitoring", label: "Live Monitoring", icon: Radio },
   { href: "/recruiter/jobs", label: "Jobs", icon: Briefcase },
   { href: "/recruiter/candidates", label: "Candidates", icon: Users },
-  { href: "/recruiter/interviews", label: "Interviews", icon: Video },
-  { href: "/recruiter/avatar", label: "Avatar Preview", icon: Smile },
   { href: "/recruiter/assessments", label: "Assessments", icon: FileCheck },
   { href: "/recruiter/projects", label: "Projects", icon: FolderGit2 },
   { href: "/recruiter/reports", label: "Reports", icon: FileBarChart },

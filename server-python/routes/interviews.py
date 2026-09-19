@@ -1,11 +1,13 @@
 from __future__ import annotations
-import secrets
 import json
+import secrets
 import traceback
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Request
 from auth import get_current_user
 from database import db
+from routes.websocket import integrity_log
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -45,6 +47,50 @@ async def validate_token(token: str):
     if interview.get("status") == "completed":
         raise HTTPException(status_code=409, detail="This interview has already been completed")
     return {"valid": True, "interview": interview}
+
+
+@router.post("/practice")
+async def create_practice_interview(request: Request):
+    """Create a self-service practice interview link.
+    Anyone can start a mock interview (5 questions) — no recruiter needed.
+    The link works exactly like a real interview link, opening the voice interview directly."""
+    try:
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        language = body.get("language", "en")
+        if language not in ("en", "hi", "mr"):
+            language = "en"
+        role = (body.get("role") or "General Software Engineer")[:120]
+
+        token = _generate_token()
+        expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        row = db.insert("interviews", {
+            "candidate_id": None,
+            "job_id": None,
+            "language": language,
+            "type": "practice",
+            "organization_id": None,
+            "status": "scheduled",
+            "invitation_token": token,
+            "invitation_expires_at": expires,
+            "max_duration_minutes": 15,
+            "context": json.dumps({"practice": True, "role": role}),
+        })
+        return {
+            "interviewId": row["id"],
+            "invitationToken": token,
+            "practiceUrl": f"/interview/{token}",
+            "language": language,
+            "role": role,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to create practice interview")
 
 
 @router.post("/join/{token}")
@@ -156,6 +202,58 @@ async def complete_interview(interview_id: str, request: Request):
     except Exception:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to complete interview")
+
+
+@router.get("/{interview_id}/live-status")
+async def get_live_status(interview_id: str, request: Request = None):
+    """Recruiter-facing: live/recorded status + integrity findings for one interview."""
+    try:
+        await get_current_user(request)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    interview = db.fetchone(
+        "SELECT id, status, recording_status, integrity_score, started_at, completed_at, evaluation FROM interviews WHERE id = %s",
+        (interview_id,),
+    )
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    if interview_id in integrity_log:
+        counter: Counter = integrity_log[interview_id]
+        integrity = {
+            "signals": dict(counter),
+            "total_weight": counter.total(),
+            "score": max(20, 100 - min(80, counter.total() * 4)),
+            "live": True,
+        }
+    else:
+        # Interview not currently live — replay signals from stored events
+        rows = db.fetchall(
+            "SELECT payload FROM interview_events WHERE interview_id = %s AND event_type = 'proctoring'",
+            (interview_id,),
+        )
+        counter = Counter()
+        weights = {"low": 1, "medium": 3, "high": 8}
+        for r in rows:
+            try:
+                p = json.loads(r["payload"]) if isinstance(r["payload"], str) else (r["payload"] or {})
+                counter[p.get("event", "unknown")] += weights.get(p.get("severity", "low"), 1)
+            except Exception:
+                pass
+        total = counter.total()
+        integrity = {
+            "signals": dict(counter),
+            "total_weight": total,
+            "score": max(20, 100 - min(80, total * 4)),
+            "live": False,
+        }
+
+    return {
+        "interview": interview,
+        "integrity": integrity,
+        "isLive": interview.get("status") == "in_progress",
+    }
 
 
 @router.get("/{interview_id}/events")

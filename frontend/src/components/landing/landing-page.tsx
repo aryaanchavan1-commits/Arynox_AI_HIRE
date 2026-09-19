@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Brain, Mic, Shield, Github, BarChart3, Globe, Users,
   FileSearch, Zap, ArrowRight, Bot, Code2, Video,
-  ChevronRight, Play, Sparkles, Check, Mic2, Eye, Monitor,
+  ChevronRight, Play, Sparkles, Check, Mic2, Eye, Monitor, Radio,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "@/lib/utils";
@@ -14,27 +14,27 @@ const Hero3D = dynamic(() => import("./hero-3d").then((m) => m.Hero3D), { ssr: f
 
 const features = [
   { icon: Brain, title: "AI Technical Interviews", description: "Adaptive AI that understands your job requirements and evaluates candidates with evidence-based questions.", color: "from-indigo-500 to-purple-500" },
-  { icon: Mic, title: "Live Voice Interviewer", description: "Real-time voice interaction with multiple Sarvam AI voices in English, Hindi, and Marathi.", color: "from-violet-500 to-pink-500" },
-  { icon: Eye, title: "OpenCV Proctoring", description: "Face detection, gaze tracking, expression analysis, and multi-face detection for fair interviews.", color: "from-amber-500 to-orange-500" },
-  { icon: Monitor, title: "Screen Recording", description: "Optional screen capture during interviews to verify candidate work environment.", color: "from-cyan-500 to-blue-500" },
-  { icon: Code2, title: "Technical Assessments", description: "AI-generated assessments tailored to your specific job requirements.", color: "from-blue-500 to-cyan-500" },
+  { icon: Mic, title: "Live Voice Interviewer", description: "Real-time voice conversation with barge-in interruption, in English, Hindi, and Marathi.", color: "from-violet-500 to-pink-500" },
+  { icon: Eye, title: "AI Proctoring & Anti-Cheating", description: "Face presence, gaze tracking, multi-face detection, and screen-content analysis catch cheating in real time.", color: "from-amber-500 to-orange-500" },
+  { icon: Monitor, title: "Screen Integrity Analysis", description: "Detects text-dense screens, suspicious content, and external lookups during the interview.", color: "from-cyan-500 to-blue-500" },
+  { icon: Radio, title: "Recruiter Live Monitoring", description: "Watch the live transcript and integrity feed of any running interview — or review the recorded session.", color: "from-rose-500 to-red-500" },
   { icon: Github, title: "GitHub Verification", description: "Verify candidate contributions and code quality from their GitHub profile.", color: "from-gray-700 to-gray-900" },
-  { icon: Mic2, title: "Multi-Voice AI", description: "Choose from 30+ Sarvam AI voices for a personalized interview experience.", color: "from-orange-500 to-amber-500" },
+  { icon: Mic2, title: "Practice Mode", description: "Candidates warm up with instant self-service mock interviews before the real thing.", color: "from-orange-500 to-amber-500" },
   { icon: Shield, title: "Privacy-Aware Proctoring", description: "Ethical monitoring signals. Never automated hiring decisions.", color: "from-rose-500 to-red-500" },
   { icon: Users, title: "Candidate Profiles", description: "Comprehensive skill profiles with verified assessments.", color: "from-sky-500 to-blue-500" },
 ];
 
 const steps = [
   { step: "01", title: "Create Interview", description: "Select candidate, configure skills, set language and duration." },
-  { step: "02", title: "Share Link", description: "Candidate receives a secure link. No app download needed." },
-  { step: "03", title: "AI Conducts Interview", description: "AI avatar asks adaptive questions via voice in real-time." },
-  { step: "04", title: "Review Report", description: "AI generates evidence-based report. Human makes the decision." },
+  { step: "02", title: "Share Link", description: "Candidate opens the secure link and lands straight in the voice interview." },
+  { step: "03", title: "AI Conducts Interview", description: "The AI speaks its questions aloud and adapts to every answer in real time." },
+  { step: "04", title: "Monitor & Review", description: "Watch live, then review the transcript, recording status, and integrity report." },
 ];
 
 const pricingPlans = [
-  { name: "Free", price: "\u20B90", period: "/month", description: "Try ARYNOX AI HIRE with limited features", features: ["5 AI Interviews", "10 Candidates", "3 Jobs", "Basic Assessments"], cta: "Get Started", popular: false },
+  { name: "Free", price: "\u20B90", period: "/month", description: "Try ARYNOX AI HIRE with limited features", features: ["5 AI Interviews", "10 Candidates", "3 Jobs", "Practice Mode"], cta: "Get Started", popular: false },
   { name: "Starter", price: "\u20B94,999", period: "/month", description: "For small teams", features: ["50 AI Interviews", "100 Candidates", "10 Jobs", "GitHub Verification", "Reports"], cta: "Start Free Trial", popular: false },
-  { name: "Growth", price: "\u20B914,999", period: "/month", description: "For growing companies", features: ["200 AI Interviews", "500 Candidates", "50 Jobs", "3D Avatar", "Analytics"], cta: "Start Free Trial", popular: true },
+  { name: "Growth", price: "\u20B914,999", period: "/month", description: "For growing companies", features: ["200 AI Interviews", "500 Candidates", "50 Jobs", "Live Monitoring", "Analytics"], cta: "Start Free Trial", popular: true },
   { name: "Business", price: "\u20B939,999", period: "/month", description: "For established teams", features: ["Unlimited Interviews", "Unlimited Candidates", "Custom Integrations", "SLA"], cta: "Contact Sales", popular: false },
 ];
 
@@ -108,8 +108,9 @@ export function LandingPage() {
               Start Hiring Free
               <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Link>
-            <Link href="/auth/login" className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-8 py-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all">
-              Sign In
+            <Link href="/practice" className="flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-8 py-4 text-sm font-semibold text-indigo-700 transition-all hover:bg-indigo-100">
+              <Mic className="h-4 w-4" />
+              Try a Free Practice Interview
             </Link>
           </div>
           <div className="mt-12 flex items-center justify-center gap-8 text-sm text-gray-400 animate-fade-in" style={{ animationDelay: "0.3s" }}>

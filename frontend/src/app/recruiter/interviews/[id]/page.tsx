@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft, Bot, User, Clock, Calendar, CheckCircle2,
   BarChart3, MessageSquare, AlertTriangle, Copy, ExternalLink,
-  Loader2, Download,
+  Loader2, Download, ShieldCheck, ShieldAlert, Radio,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -97,6 +97,8 @@ export default function RecruiterInterviewDetailPage() {
 
   const questions = events.filter((e) => e.event_type === "question");
   const answers = events.filter((e) => e.event_type === "answer");
+  const integritySignals = events.filter((e) => e.event_type === "proctoring");
+  const highSignals = integritySignals.filter((e) => (e.payload?.severity ?? "low") === "high");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -155,6 +157,49 @@ export default function RecruiterInterviewDetailPage() {
               <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Recording & Integrity */}
+        <div className="mb-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-surface-900/50 p-5">
+            <div className="flex items-center gap-2 text-xs text-surface-400">Recording</div>
+            <div className="mt-2 flex items-center gap-2">
+              {interview.status === "in_progress" ? (
+                <>
+                  <Radio className="h-4 w-4 animate-pulse text-red-400" />
+                  <span className="text-sm font-semibold text-red-300">Live now</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <span className="text-sm font-semibold text-white capitalize">{interview.status.replace("_", " ")}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-900/50 p-5">
+            <div className="flex items-center gap-2 text-xs text-surface-400">Integrity</div>
+            <div className="mt-2 flex items-center gap-2">
+              {highSignals.length > 0 ? (
+                <>
+                  <ShieldAlert className="h-4 w-4 text-red-400" />
+                  <span className="text-sm font-semibold text-red-300">{highSignals.length} high alert{highSignals.length > 1 ? "s" : ""}</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                  <span className="text-sm font-semibold text-white">{integritySignals.length === 0 ? "No signals" : `${integritySignals.length} low-level`}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-900/50 p-5">
+            <div className="flex items-center gap-2 text-xs text-surface-400">Conversation</div>
+            <div className="mt-2 flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-brand-400" />
+              <span className="text-sm font-semibold text-white">{questions.length} questions · {answers.length} answers</span>
+            </div>
+          </div>
         </div>
 
         {/* Evaluation */}

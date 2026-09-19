@@ -49,6 +49,12 @@ class Database:
 
     def _create_tables(self):
         cur = self._conn.cursor()
+        # Idempotent column additions for existing deployments
+        try:
+            cur.execute("ALTER TABLE interviews ADD COLUMN IF NOT EXISTS recording_status TEXT DEFAULT 'pending'")
+            cur.execute("ALTER TABLE interviews ADD COLUMN IF NOT EXISTS integrity_score INTEGER DEFAULT 100")
+        except Exception:
+            pass
         cur.execute("""
             CREATE TABLE IF NOT EXISTS profiles (
                 id TEXT PRIMARY KEY, email TEXT NOT NULL, full_name TEXT DEFAULT '',
@@ -86,7 +92,9 @@ class Database:
                 context TEXT DEFAULT '{}', started_at TEXT, completed_at TEXT,
                 duration_seconds INTEGER, invitation_token TEXT UNIQUE,
                 invitation_expires_at TEXT, max_duration_minutes INTEGER DEFAULT 60,
-                evaluation TEXT DEFAULT '{}', created_at TEXT
+                evaluation TEXT DEFAULT '{}', created_at TEXT,
+                recording_status TEXT DEFAULT 'pending',
+                integrity_score INTEGER DEFAULT 100
             );
             CREATE TABLE IF NOT EXISTS interview_events (
                 id TEXT PRIMARY KEY, interview_id TEXT, event_type TEXT,

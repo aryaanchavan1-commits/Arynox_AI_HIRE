@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, User, FolderGit2, FileCheck, Video, LogOut } from "lucide-react";
+import { LayoutDashboard, User, FolderGit2, FileCheck, Video, LogOut, Mic } from "lucide-react";
 
 const navItems = [
   { href: "/candidate/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/candidate/projects", label: "Projects", icon: FolderGit2 },
   { href: "/candidate/assessments", label: "Assessments", icon: FileCheck },
   { href: "/candidate/interviews", label: "Interviews", icon: Video },
+  { href: "/practice", label: "Practice Interview", icon: Mic },
 ];
 
 export default function CandidateLayout({ children }: { children: React.ReactNode }) {
