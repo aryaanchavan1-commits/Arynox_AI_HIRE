@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from auth import get_current_user
 from database import db
 
@@ -26,5 +26,5 @@ async def list_jobs(request: Request):
 async def get_job(job_id: str):
     row = db.fetchone("SELECT * FROM jobs WHERE id = %s", (job_id,))
     if not row:
-        return {"error": "Job not found"}
+        raise HTTPException(status_code=404, detail="Job not found")
     return row

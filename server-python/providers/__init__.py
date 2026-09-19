@@ -24,12 +24,12 @@ class STTProvider(ABC):
 
 class TTSProvider(ABC):
     @abstractmethod
-    async def synthesize(self, text: str, language: str = "en") -> bytes:
+    async def synthesize(self, text: str, language: str = "en", speaker: str = "shubh") -> bytes:
         """Returns audio bytes (WAV/PCM)."""
         ...
 
     @abstractmethod
-    async def synthesize_stream(self, text: str, language: str = "en"):
+    async def synthesize_stream(self, text: str, language: str = "en", speaker: str = "shubh"):
         """Yields audio chunks."""
         ...
 

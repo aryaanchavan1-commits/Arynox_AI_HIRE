@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import random
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 from providers import LLMProvider, STTProvider, TTSProvider
@@ -82,6 +83,7 @@ class InterviewBrain:
         self.current_question: str = ""
         self.current_skill: str = ""
         self.conversation_history: list[dict] = []
+        self._last_evaluation: Optional[dict[str, Any]] = None
         self._build_system_prompt()
 
     def _build_system_prompt(self):
@@ -183,10 +185,12 @@ class InterviewBrain:
                 "content": completion_msg,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
+            evaluation = await self._generate_evaluation()
+            self._last_evaluation = evaluation
             return {
                 "type": "complete",
                 "text": completion_msg,
-                "evaluation": await self._generate_evaluation(),
+                "evaluation": evaluation,
             }
 
         self.state = InterviewState.SPEAKING
@@ -255,16 +259,125 @@ class InterviewBrain:
         return random.choice(fallbacks)
 
     async def _generate_evaluation(self) -> dict[str, Any]:
-        """Generate final interview evaluation."""
+        """Generate final evaluation from the actual transcript.
+        Uses the LLM when available; falls back to a deterministic transcript-based
+        heuristic so results are stable and reproducible (never random)."""
+        # Ask the LLM for an evidence-based evaluation of the real conversation
+        if len(self.transcript) > 0:
+            transcript_text = "\n".join(
+                f"{t['role'].upper()}: {t['content']}" for t in self.transcript
+            )
+            eval_messages = [
+                {"role": "system", "content": PERSONA_EN + "\n\nYou are now scoring the interview. Be fair, evidence-based, and consistent."},
+                {"role": "user", "content": (
+                    "Interview transcript:\n" + transcript_text[:8000] +
+                    "\n\nScore the candidate 0-100 on each dimension based ONLY on evidence in the transcript. "
+                    "Respond with ONLY a JSON object, no other text:\n"
+                    '{"technical_score": <0-100>, "communication_score": <0-100>, '
+                    '"problem_solving_score": <0-100>, "project_understanding_score": <0-100>, '
+                    '"strengths": ["..."], "improvements": ["..."], "summary": "..."}'
+                )},
+            ]
+            try:
+                raw = await self.llm.generate(eval_messages, temperature=0.2, max_tokens=800)
+                match = re.search(r"\{[\s\S]*\}", raw)
+                if match:
+                    data = json.loads(match.group(0))
+                    return self._normalize_evaluation(data)
+            except Exception:
+                pass  # fall through to deterministic fallback
+
+        return self._deterministic_evaluation()
+
+    def _deterministic_evaluation(self) -> dict[str, Any]:
+        """Deterministic transcript-based fallback (no randomness — same input, same scores)."""
+        answers = [t["content"] for t in self.transcript if t.get("role") == "candidate"]
+        n_answers = len(answers)
+
+        if n_answers == 0:
+            return self._normalize_evaluation({
+                "technical_score": 0, "communication_score": 0,
+                "problem_solving_score": 0, "project_understanding_score": 0,
+                "strengths": [],
+                "improvements": ["No answers recorded during the interview"],
+                "summary": "The candidate did not provide any answers, so no evaluation could be made.",
+            })
+
+        total_chars = sum(len(a) for a in answers)
+        avg_len = total_chars / n_answers
+
+        # Depth signal: longer, more detailed answers generally indicate deeper engagement
+        depth = min(1.0, avg_len / 400)                      # 400+ chars ≈ detailed
+        effort = min(1.0, total_chars / 1500)                # overall participation
+        technical_terms = (
+            "implement", "architecture", "database", "api", "framework", "optimize",
+            "testing", "deployment", "algorithm", "performance", "security", "scale",
+        )
+        term_hits = sum(1 for a in answers for t in technical_terms if t in a.lower())
+        specificity = min(1.0, term_hits / max(4, n_answers))
+
+        base = 40 + 35 * depth + 15 * specificity + 10 * effort
+        scores = {
+            "technical_score": round(min(100, base + 5 * specificity)),
+            "communication_score": round(min(100, base + 5 * depth)),
+            "problem_solving_score": round(min(100, base)),
+            "project_understanding_score": round(min(100, base - 5 + 10 * depth)),
+        }
+
+        strengths = []
+        improvements = []
+        if depth > 0.5:
+            strengths.append("Provided detailed, well-developed answers")
+        else:
+            improvements.append("Answers were brief — expand with concrete examples")
+        if specificity > 0.4:
+            strengths.append("Used specific technical vocabulary and concepts")
+        else:
+            improvements.append("Cite specific technologies and methods when answering")
+        if n_answers >= self.max_questions - 1:
+            strengths.append("Completed the full interview")
+        if not strengths:
+            strengths.append("Participated in the interview")
+        if not improvements:
+            improvements.append("Continue building depth in technical communication")
+
+        return self._normalize_evaluation({
+            **scores,
+            "strengths": strengths,
+            "improvements": improvements,
+            "summary": (
+                f"The candidate answered {n_answers} question(s) with an average length of "
+                f"{int(avg_len)} characters. Scores are derived from answer depth, technical "
+                f"specificity, and participation."
+            ),
+        })
+
+    def _normalize_evaluation(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Clamp/validate an evaluation dict to a consistent, safe shape."""
+        def clamp_score(val: Any) -> int:
+            try:
+                return max(0, min(100, int(round(float(val)))))
+            except (TypeError, ValueError):
+                return 0
+
+        scores = {
+            "technical_score": clamp_score(data.get("technical_score", 0)),
+            "communication_score": clamp_score(data.get("communication_score", 0)),
+            "problem_solving_score": clamp_score(data.get("problem_solving_score", 0)),
+            "project_understanding_score": clamp_score(data.get("project_understanding_score", 0)),
+        }
+        overall = round(sum(scores.values()) / 4)
+
+        strengths = [str(s) for s in (data.get("strengths") or [])][:8]
+        improvements = [str(s) for s in (data.get("improvements") or [])][:8]
+        summary = str(data.get("summary") or "Evaluation completed.")[:2000]
+
         return {
-            "technical_score": random.randint(60, 90),
-            "communication_score": random.randint(65, 95),
-            "problem_solving_score": random.randint(55, 85),
-            "project_understanding_score": random.randint(60, 90),
-            "overall_score": random.randint(60, 90),
-            "strengths": ["Good communication", "Relevant experience", "Clear explanations"],
-            "improvements": ["Could dive deeper into technical details", "More concrete examples needed"],
-            "summary": "The candidate demonstrated good technical knowledge and communication skills. Areas for improvement include providing more detailed technical examples.",
+            **scores,
+            "overall_score": overall,
+            "strengths": strengths,
+            "improvements": improvements,
+            "summary": summary,
         }
 
     def get_state(self) -> dict:

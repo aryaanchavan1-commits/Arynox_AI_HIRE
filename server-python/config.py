@@ -37,8 +37,6 @@ LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
 
-# Safety: if APP_MODE is local, force mock providers
-if APP_MODE == "local":
-    LLM_PROVIDER = "mock"
-    STT_PROVIDER = "mock"
-    TTS_PROVIDER = "mock"
+# NOTE: APP_MODE=local no longer forces the mock LLM. If GROQ_API_KEY is set the real
+# provider is used; the mock LLM is only a fallback when no key is configured.
+# The UI reads mockMode from /health to display provider status.

@@ -18,14 +18,14 @@ class SarvamSTTProvider(STTProvider):
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 SARVAM_STT_URL,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                files={"audio": ("audio.wav", audio_data, "audio/wav")},
-                data={"language_code": sarvam_lang},
+                headers={"api-subscription-key": self._api_key},
+                files={"file": ("audio.wav", audio_data, "audio/wav")},
+                data={"model": "saaras:v3", "language_code": sarvam_lang},
             )
             resp.raise_for_status()
             data = resp.json()
             return {
                 "text": data.get("transcript", ""),
-                "confidence": data.get("confidence", 0.0),
+                "confidence": data.get("language_probability", 0.0) or 0.0,
                 "language": language,
             }

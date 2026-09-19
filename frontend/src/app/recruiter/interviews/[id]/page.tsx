@@ -9,6 +9,7 @@ import {
   BarChart3, MessageSquare, AlertTriangle, Copy, ExternalLink,
   Loader2, Download,
 } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 interface InterviewDetail {
   id: string;
@@ -47,7 +48,7 @@ export default function RecruiterInterviewDetailPage() {
 
   const fetchInterview = async () => {
     try {
-      const res = await fetch(`/api/interviews/${id}`);
+      const res = await apiFetch(`/api/interviews/${id}`);
       const data = await res.json();
       setInterview(data);
     } catch {}
@@ -55,7 +56,7 @@ export default function RecruiterInterviewDetailPage() {
 
   const fetchEvents = async () => {
     try {
-      const res = await fetch(`/api/interviews/${id}/events`);
+      const res = await apiFetch(`/api/interviews/${id}/events`);
       const data = await res.json();
       setEvents(data.events || []);
     } catch {}

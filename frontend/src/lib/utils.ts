@@ -37,3 +37,13 @@ export function getInitials(name: string): string {
 }
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/** Build an absolute URL to the backend API. Accepts paths like "/api/interviews". */
+export function apiUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
+
+/** Fetch helper targeting the backend API (never the frontend origin). */
+export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(apiUrl(path), init);
+}

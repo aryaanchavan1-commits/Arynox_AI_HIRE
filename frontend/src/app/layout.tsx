@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "ARYNOX AI HIRE — AI-Powered Technical Hiring",
-  description: "Evaluate technical candidates with AI interviews, live voice interaction, 3D AI interviewer, GitHub project verification, and company-specific RAG.",
-  keywords: ["AI hiring", "technical interview", "candidate evaluation", "GitHub verification", "AI interviewer", "Indian languages"],
+  description: "Evaluate technical candidates with AI interviews, live voice interaction, OpenCV proctoring, and multi-language support.",
+  keywords: ["AI hiring", "technical interview", "candidate evaluation", "proctoring", "AI interviewer", "Indian languages"],
 };
 
 export default function RootLayout({

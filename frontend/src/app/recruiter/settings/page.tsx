@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 export default function SettingsPage() {
-  const [org, setOrg] = useState({ name: "Arynox Technologies", slug: "arynox", industry: "Technology", size: "50-200" });
+  const [org, setOrg] = useState({ name: "ARYNOX Technologies", slug: "designer-a", industry: "Technology", size: "50-200" });
 
   return (
     <div>

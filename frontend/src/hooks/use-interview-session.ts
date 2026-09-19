@@ -2,10 +2,12 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { InterviewMessage, InterviewPhase, AvatarState } from "@/lib/providers/types";
+import { API_URL } from "@/lib/utils";
 
 interface UseInterviewSessionOptions {
   interviewId: string;
   candidateId: string;
+  invitationToken: string;
   maxDurationMinutes: number;
   onPhaseChange?: (phase: InterviewPhase) => void;
 }
@@ -31,9 +33,12 @@ interface UseInterviewSessionResult {
   setAudioLevel: (level: number) => void;
 }
 
+const MAX_RECONNECT = 5;
+
 export function useInterviewSession({
   interviewId,
   candidateId,
+  invitationToken,
   maxDurationMinutes,
   onPhaseChange,
 }: UseInterviewSessionOptions): UseInterviewSessionResult {
@@ -51,207 +56,259 @@ export function useInterviewSession({
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectRef = useRef<number>(0);
-  const maxReconnect = 5;
+  // Refs so callbacks never read stale state
+  const phaseRef = useRef<InterviewPhase>("initializing");
+  const currentQuestionRef = useRef("");
+  const currentSkillRef = useRef("");
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards against React StrictMode double-connect and reconnect-after-end
+  const intentionallyClosedRef = useRef(false);
+  const connectingRef = useRef(false);
 
-  const updatePhase = useCallback((p: InterviewPhase) => {
-    setPhase(p);
-    onPhaseChange?.(p);
-  }, [onPhaseChange]);
+  const updatePhase = useCallback(
+    (p: InterviewPhase) => {
+      phaseRef.current = p;
+      setPhase(p);
+      onPhaseChange?.(p);
+    },
+    [onPhaseChange]
+  );
+
+  const handleMessage = useCallback(
+    (msg: any) => {
+      const { type, payload } = msg;
+
+      switch (type) {
+        case "welcome":
+        case "question": {
+          const text = payload?.text || payload?.question || "";
+          if (!text) break;
+          const skill = payload?.skill || "";
+          const qNum = payload?.question_number || questionNumber + 1;
+          const total = payload?.total_questions || totalQuestions;
+
+          currentQuestionRef.current = text;
+          currentSkillRef.current = skill;
+          setCurrentQuestion(text);
+          setCurrentSkill(skill);
+          setQuestionNumber(qNum);
+          setTotalQuestions(total);
+          updatePhase("speaking");
+          setAvatarState("speaking");
+
+          setMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), role: "ai", content: text, timestamp: new Date(), skill },
+          ]);
+          setTranscript((prev) => [...prev, { role: "ai", content: text, timestamp: new Date().toISOString() }]);
+
+          // After AI finishes speaking, switch to listening
+          const estimatedDuration = Math.max(2000, text.length * 50);
+          setTimeout(() => {
+            if (phaseRef.current !== "completed" && phaseRef.current !== "error") {
+              updatePhase("listening");
+              setAvatarState("listening");
+            }
+          }, estimatedDuration);
+          break;
+        }
+
+        case "feedback": {
+          const feedback = payload?.feedback || payload?.text || "";
+          if (feedback) {
+            setMessages((prev) => [
+              ...prev,
+              { id: crypto.randomUUID(), role: "ai", content: feedback, timestamp: new Date() },
+            ]);
+          }
+          break;
+        }
+
+        case "complete": {
+          updatePhase("completed");
+          setAvatarState("idle");
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), role: "ai", content: "Interview complete! Thank you for your time.", timestamp: new Date() },
+          ]);
+          break;
+        }
+
+        case "transcription": {
+          const text = payload?.text || "";
+          if (text) {
+            setMessages((prev) => [
+              ...prev,
+              { id: crypto.randomUUID(), role: "candidate", content: text, timestamp: new Date() },
+            ]);
+            setTranscript((prev) => [...prev, { role: "candidate", content: text, timestamp: new Date().toISOString() }]);
+          }
+          break;
+        }
+
+        case "interrupt": {
+          setAvatarState("listening");
+          updatePhase("listening");
+          break;
+        }
+
+        case "error": {
+          setError(payload?.message || "Unknown error");
+          updatePhase("error");
+          break;
+        }
+      }
+    },
+    // questionNumber/totalQuestions are only read to derive next values; keeping them
+    // out of deps is safe because the ref-free fallback is best-effort UI data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [updatePhase]
+  );
 
   const connect = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (connectingRef.current) return;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+
+    intentionallyClosedRef.current = false;
+    connectingRef.current = true;
     updatePhase("connecting");
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    const ws = new WebSocket(`${protocol}//${host}/ws/interview/${interviewId}`);
+    setError(null);
+
+    // WebSocket lives on the backend (port 8000), not the Next.js origin
+    const wsBase = API_URL.replace(/^http/, "ws");
+    const ws = new WebSocket(`${wsBase}/ws/interview/${interviewId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      connectingRef.current = false;
       reconnectRef.current = 0;
-      ws.send(JSON.stringify({
-        type: "join",
-        payload: { interviewId, candidateId, role: "candidate" },
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "join",
+          payload: { interviewId, candidateId, invitationToken, role: "candidate" },
+        })
+      );
     };
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
-        handleMessage(msg);
-      } catch {}
+        handleMessage(JSON.parse(event.data));
+      } catch {
+        // ignore malformed frames
+      }
     };
 
     ws.onclose = () => {
-      if (phase !== "completed" && phase !== "error" && reconnectRef.current < maxReconnect) {
-        reconnectRef.current++;
+      connectingRef.current = false;
+      if (intentionallyClosedRef.current) return;
+      if (phaseRef.current === "completed" || phaseRef.current === "error") return;
+      if (reconnectRef.current < MAX_RECONNECT) {
+        reconnectRef.current += 1;
         updatePhase("reconnecting");
-        setTimeout(connect, 2000 * reconnectRef.current);
+        connectTimeoutRef.current = setTimeout(connect, 2000 * reconnectRef.current);
+      } else {
+        setError("Connection lost. Please refresh the page.");
+        updatePhase("error");
       }
     };
 
     ws.onerror = () => {
       setError("Connection error. Retrying...");
     };
-  }, [interviewId, candidateId, phase, updatePhase]);
+  }, [interviewId, candidateId, invitationToken, handleMessage, updatePhase]);
 
-  const handleMessage = useCallback((msg: any) => {
-    const { type, payload } = msg;
+  const sendAnswer = useCallback(
+    (text: string) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    switch (type) {
-      case "welcome":
-      case "question": {
-        const text = payload?.text || payload?.question || "";
-        const skill = payload?.skill || "";
-        const qNum = payload?.question_number || questionNumber + 1;
-        const total = payload?.total_questions || totalQuestions;
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "candidate", content: text, timestamp: new Date() },
+      ]);
+      setTranscript((prev) => [...prev, { role: "candidate", content: text, timestamp: new Date().toISOString() }]);
 
-        setCurrentQuestion(text);
-        setCurrentSkill(skill);
-        setQuestionNumber(qNum);
-        setTotalQuestions(total);
-        updatePhase("speaking");
-        setAvatarState("speaking");
+      updatePhase("thinking");
+      setAvatarState("thinking");
 
-        setMessages((prev) => [...prev, {
-          id: crypto.randomUUID(),
-          role: "ai",
-          content: text,
-          timestamp: new Date(),
-          skill,
-        }]);
-
-        setTranscript((prev) => [...prev, {
-          role: "ai",
-          content: text,
-          timestamp: new Date().toISOString(),
-        }]);
-
-        // After AI finishes speaking, switch to listening
-        const estimatedDuration = Math.max(2000, text.length * 50);
-        setTimeout(() => {
-          if (phase !== "completed" && phase !== "error") {
-            updatePhase("listening");
-            setAvatarState("listening");
-          }
-        }, estimatedDuration);
-        break;
-      }
-
-      case "feedback": {
-        const feedback = payload?.feedback || "";
-        if (feedback) {
-          setMessages((prev) => [...prev, {
-            id: crypto.randomUUID(),
-            role: "ai",
-            content: feedback,
-            timestamp: new Date(),
-          }]);
-        }
-        break;
-      }
-
-      case "complete": {
-        updatePhase("completed");
-        setAvatarState("idle");
-        if (timerRef.current) clearInterval(timerRef.current);
-        const eval_ = payload?.evaluation;
-        if (eval_) {
-          setMessages((prev) => [...prev, {
-            id: crypto.randomUUID(),
-            role: "ai",
-            content: "Interview complete! Thank you for your time.",
-            timestamp: new Date(),
-          }]);
-        }
-        break;
-      }
-
-      case "transcription": {
-        const text = payload?.text || "";
-        if (text) {
-          setMessages((prev) => [...prev, {
-            id: crypto.randomUUID(),
-            role: "candidate",
-            content: text,
-            timestamp: new Date(),
-          }]);
-          setTranscript((prev) => [...prev, {
-            role: "candidate",
-            content: text,
-            timestamp: new Date().toISOString(),
-          }]);
-        }
-        break;
-      }
-
-      case "interrupt": {
-        setAvatarState("listening");
-        updatePhase("listening");
-        break;
-      }
-
-      case "error": {
-        setError(payload?.message || "Unknown error");
-        updatePhase("error");
-        break;
-      }
-    }
-  }, [phase, questionNumber, totalQuestions, updatePhase]);
-
-  const sendAnswer = useCallback((text: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-
-    setMessages((prev) => [...prev, {
-      id: crypto.randomUUID(),
-      role: "candidate",
-      content: text,
-      timestamp: new Date(),
-    }]);
-    setTranscript((prev) => [...prev, {
-      role: "candidate",
-      content: text,
-      timestamp: new Date().toISOString(),
-    }]);
-
-    updatePhase("thinking");
-    setAvatarState("thinking");
-
-    wsRef.current.send(JSON.stringify({
-      type: "answer",
-      payload: { answer: text, question: currentQuestion, skill: currentSkill },
-    }));
-  }, [currentQuestion, currentSkill, updatePhase]);
+      ws.send(
+        JSON.stringify({
+          type: "answer",
+          payload: { answer: text, question: currentQuestionRef.current, skill: currentSkillRef.current },
+        })
+      );
+    },
+    [updatePhase]
+  );
 
   const sendAudio = useCallback((audioBlob: Blob) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = (reader.result as string).split(",")[1];
-      wsRef.current?.send(JSON.stringify({
-        type: "audio",
-        payload: { audio: base64 },
-      }));
+      if (base64) {
+        wsRef.current?.send(JSON.stringify({ type: "audio", payload: { audio: base64 } }));
+      }
     };
     reader.readAsDataURL(audioBlob);
   }, []);
 
   const interrupt = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: "interrupt" }));
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "interrupt" }));
     setAvatarState("interrupted");
     updatePhase("listening");
   }, [updatePhase]);
 
   const endInterview = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "end" }));
+    intentionallyClosedRef.current = true;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "end" }));
     }
     updatePhase("completed");
     setAvatarState("idle");
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, [updatePhase]);
+
+  // Full teardown: close socket, cancel timers
+  const destroy = useCallback(() => {
+    intentionallyClosedRef.current = true;
+    connectingRef.current = false;
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    const ws = wsRef.current;
+    if (ws) {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      try {
+        ws.close();
+      } catch {
+        // already closed
+      }
+      wsRef.current = null;
+    }
+  }, []);
 
   // Timer
   useEffect(() => {
@@ -261,7 +318,12 @@ export function useInterviewSession({
         setTimeRemaining((t) => Math.max(0, t - 1));
       }, 1000);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
   }, [phase]);
 
   // Auto-end when time runs out
@@ -271,10 +333,29 @@ export function useInterviewSession({
     }
   }, [timeRemaining, phase, endInterview]);
 
+  // Cleanup on unmount (also makes StrictMode double-mount safe)
+  useEffect(() => {
+    return () => destroy();
+  }, [destroy]);
+
   return {
-    phase, avatarState, currentQuestion, currentSkill,
-    questionNumber, totalQuestions, timeElapsed, timeRemaining,
-    messages, transcript, audioLevel, error,
-    connect, sendAnswer, sendAudio, interrupt, endInterview, setAudioLevel,
+    phase,
+    avatarState,
+    currentQuestion,
+    currentSkill,
+    questionNumber,
+    totalQuestions,
+    timeElapsed,
+    timeRemaining,
+    messages,
+    transcript,
+    audioLevel,
+    error,
+    connect,
+    sendAnswer,
+    sendAudio,
+    interrupt,
+    endInterview,
+    setAudioLevel,
   };
 }

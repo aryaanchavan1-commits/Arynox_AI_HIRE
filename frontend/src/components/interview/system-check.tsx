@@ -6,6 +6,7 @@ import {
   CheckCircle2, XCircle, Loader2, Wifi, Mic, Camera, Monitor,
   Volume2, ArrowRight, RotateCcw,
 } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 interface SystemCheckProps {
   onComplete: () => void;
@@ -63,7 +64,7 @@ export function SystemCheck({ onComplete }: SystemCheckProps) {
           }
           case "network": {
             const start = Date.now();
-            await fetch("/api/health", { method: "HEAD" }).catch(() => {});
+            await apiFetch("/health", { method: "HEAD" }).catch(() => {});
             const latency = Date.now() - start;
             updateCheck("network", "passed", `${latency}ms latency`);
             break;

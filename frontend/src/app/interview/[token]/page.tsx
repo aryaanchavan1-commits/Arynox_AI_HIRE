@@ -7,6 +7,7 @@ import { SystemCheck } from "@/components/interview/system-check";
 import { InterviewRoom } from "@/components/interview/interview-room";
 import { motion } from "framer-motion";
 import { AlertCircle, Loader2, Bot, CheckCircle2, X } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 type FlowStep = "loading" | "invalid" | "consent" | "system_check" | "interview" | "completed";
 
@@ -37,7 +38,7 @@ export default function CandidateInterviewPage() {
 
   const validateToken = async () => {
     try {
-      const res = await fetch(`/api/interviews/validate-token/${token}`);
+      const res = await apiFetch(`/api/interviews/validate-token/${token}`);
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "Invalid interview link");
@@ -56,7 +57,7 @@ export default function CandidateInterviewPage() {
   const handleConsent = async (consented: boolean) => {
     if (!consented) return;
     try {
-      const res = await fetch(`/api/interviews/join/${token}`, {
+      const res = await apiFetch(`/api/interviews/join/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -150,6 +151,7 @@ export default function CandidateInterviewPage() {
       <InterviewRoom
         interviewId={interviewData.id}
         candidateId={interviewData.candidate_id}
+        invitationToken={token}
         jobTitle={interviewData.jobs?.title || "Technical Interview"}
         language={interviewData.language as "en" | "hi" | "mr"}
         maxDurationMinutes={interviewData.max_duration_minutes}

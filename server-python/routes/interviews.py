@@ -3,7 +3,7 @@ import secrets
 import json
 import traceback
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from auth import get_current_user
 from database import db
 
@@ -30,17 +30,20 @@ async def list_interviews(request: Request):
 async def validate_token(token: str):
     interview = db.query_interviews(filters={"invitation_token": token}, single=True)
     if not interview:
-        return {"error": "Invalid interview link"}
+        raise HTTPException(status_code=404, detail="Invalid interview link")
     expires = interview.get("invitation_expires_at", "")
     if expires:
         if isinstance(expires, str):
-            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            try:
+                exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Invalid interview link")
         else:
             exp_dt = expires
         if exp_dt < datetime.now(timezone.utc):
-            return {"error": "This interview link has expired"}
+            raise HTTPException(status_code=410, detail="This interview link has expired")
     if interview.get("status") == "completed":
-        return {"error": "This interview has already been completed"}
+        raise HTTPException(status_code=409, detail="This interview has already been completed")
     return {"valid": True, "interview": interview}
 
 
@@ -48,17 +51,20 @@ async def validate_token(token: str):
 async def join_interview(token: str, request: Request):
     interview = db.fetchone("SELECT id, status, invitation_expires_at, candidate_id FROM interviews WHERE invitation_token = %s", (token,))
     if not interview:
-        return {"error": "Invalid interview link"}
+        raise HTTPException(status_code=404, detail="Invalid interview link")
     expires = interview.get("invitation_expires_at", "")
     if expires:
         if isinstance(expires, str):
-            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            try:
+                exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Invalid interview link")
         else:
             exp_dt = expires
         if exp_dt < datetime.now(timezone.utc):
-            return {"error": "This interview link has expired"}
+            raise HTTPException(status_code=410, detail="This interview link has expired")
     if interview.get("status") in ("completed", "in_progress"):
-        return {"error": "Interview already started or completed"}
+        raise HTTPException(status_code=409, detail="Interview already started or completed")
     db.update("interviews", {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}, "id = %s", (interview["id"],))
     return {"interviewId": interview["id"], "candidateId": interview["candidate_id"]}
 
@@ -67,7 +73,7 @@ async def join_interview(token: str, request: Request):
 async def get_interview(interview_id: str):
     interview = db.query_interviews(filters={"id": interview_id}, single=True)
     if not interview:
-        return {"error": "Interview not found"}
+        raise HTTPException(status_code=404, detail="Interview not found")
     return interview
 
 
@@ -92,15 +98,30 @@ async def create_interview(request: Request):
         })
         result = db.query_interviews(filters={"id": row["id"]}, single=True)
         return result or row
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail="Failed to create interview")
+
+
+def _verify_invitation(interview_id: str, token: str | None) -> None:
+    """Guard for candidate-facing endpoints: the caller must present the invitation token."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing invitation token")
+    row = db.fetchone(
+        "SELECT id FROM interviews WHERE id = %s AND invitation_token = %s",
+        (interview_id, token),
+    )
+    if not row:
+        raise HTTPException(status_code=403, detail="Invalid interview or invitation token")
 
 
 @router.post("/{interview_id}/answer")
 async def submit_answer(interview_id: str, request: Request):
     try:
         body = await request.json()
+        _verify_invitation(interview_id, body.get("invitationToken"))
         db.insert("interview_events", {
             "interview_id": interview_id,
             "event_type": "answer",
@@ -108,8 +129,11 @@ async def submit_answer(interview_id: str, request: Request):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         return {"received": True}
-    except Exception as e:
-        return {"error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to store answer")
 
 
 @router.post("/{interview_id}/complete")
@@ -120,18 +144,30 @@ async def complete_interview(interview_id: str, request: Request):
             body = await request.json()
         except Exception:
             pass
+        _verify_invitation(interview_id, body.get("invitationToken"))
         db.update("interviews", {
             "status": "completed",
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "evaluation": json.dumps(body.get("evaluation", {})),
         }, "id = %s", (interview_id,))
         return {"status": "completed"}
-    except Exception as e:
-        return {"error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to complete interview")
 
 
 @router.get("/{interview_id}/events")
-async def get_events(interview_id: str):
+async def get_events(interview_id: str, token: str | None = None, request: Request = None):
+    # Candidate access (invitation token) or recruiter access (auth)
+    if token:
+        _verify_invitation(interview_id, token)
+    else:
+        try:
+            await get_current_user(request)
+        except HTTPException:
+            raise HTTPException(status_code=401, detail="Missing invitation token or auth")
     rows = db.fetchall("SELECT * FROM interview_events WHERE interview_id = %s ORDER BY timestamp ASC", (interview_id,))
     for r in rows:
         if "payload" in r and isinstance(r["payload"], str):

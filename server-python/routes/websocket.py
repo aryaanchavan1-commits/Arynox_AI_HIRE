@@ -28,6 +28,11 @@ async def interview_ws(websocket: WebSocket, session_id: str):
             if msg_type == "join":
                 interview_id = payload.get("interviewId")
                 candidate_id = payload.get("candidateId")
+                invitation_token = payload.get("invitationToken", "")
+
+                if not invitation_token:
+                    await websocket.send_json({"type": "error", "payload": {"message": "Missing invitation token"}})
+                    continue
 
                 interview = db.fetchone(
                     """SELECT i.*, j.title AS job_title, j.required_skills AS job_required_skills,
@@ -37,13 +42,24 @@ async def interview_ws(websocket: WebSocket, session_id: str):
                        FROM interviews i
                        LEFT JOIN jobs j ON j.id = i.job_id
                        LEFT JOIN candidates c ON c.id = i.candidate_id
-                       WHERE i.id = %s""",
-                    (interview_id,),
+                       WHERE i.id = %s AND i.invitation_token = %s""",
+                    (interview_id, invitation_token),
                 )
 
                 if not interview:
-                    await websocket.send_json({"type": "error", "payload": {"message": "Interview not found"}})
+                    await websocket.send_json({"type": "error", "payload": {"message": "Invalid interview or invitation token"}})
                     continue
+
+                # Reject expired links
+                expires = interview.get("invitation_expires_at")
+                if expires:
+                    try:
+                        exp_dt = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+                        if exp_dt < datetime.now(timezone.utc):
+                            await websocket.send_json({"type": "error", "payload": {"message": "This interview link has expired"}})
+                            continue
+                    except ValueError:
+                        pass
 
                 job_context = {}
                 if interview.get("job_title"):
@@ -81,12 +97,13 @@ async def interview_ws(websocket: WebSocket, session_id: str):
                     "candidate_id": candidate_id,
                 }
 
+            elif msg_type in ("answer", "audio", "interrupt", "end") and not active_sessions.get(session_id):
+                # All interaction messages require a verified (joined) session
+                await websocket.send_json({"type": "error", "payload": {"message": "No active session"}})
+                continue
+
             elif msg_type == "answer":
                 session = active_sessions.get(session_id)
-                if not session:
-                    await websocket.send_json({"type": "error", "payload": {"message": "No active session"}})
-                    continue
-
                 brain = session["brain"]
                 answer = payload.get("answer", "")
 
@@ -129,7 +146,9 @@ async def interview_ws(websocket: WebSocket, session_id: str):
                     try:
                         transcription = await brain.transcribe_audio(audio_data)
                         text = transcription.get("text", "")
-                        if text and not text.startswith("[Mock"):
+                        if text:
+                            # Mock STT returns a placeholder — still treat it as the
+                            # candidate's answer so the interview can proceed in mock mode.
                             await websocket.send_json({
                                 "type": "transcription",
                                 "payload": {"text": text, "confidence": transcription.get("confidence", 0)},
@@ -160,7 +179,8 @@ async def interview_ws(websocket: WebSocket, session_id: str):
                 session = active_sessions.get(session_id)
                 if session:
                     brain = session["brain"]
-                    evaluation = await brain._generate_evaluation()
+                    # Reuse the evaluation generated at completion; only generate if missing
+                    evaluation = brain._last_evaluation or await brain._generate_evaluation()
                     db.update("interviews", {
                         "status": "completed",
                         "completed_at": datetime.now(timezone.utc).isoformat(),

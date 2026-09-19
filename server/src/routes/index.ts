@@ -112,9 +112,10 @@ export async function registerRoutes(app: FastifyInstance) {
   app.addHook("onRequest", async (req, reply) => {
     if (req.url.startsWith("/health") || req.url.startsWith("/docs")) return;
     if (req.url.startsWith("/api/")) {
-      // Skip auth for public/candidate routes
+      // Skip auth for the public candidate token flow only.
+      // NOTE: /api/interviews/:id/(answer|complete|events) intentionally require
+      // auth — leaving them unauthenticated would let anyone mutate any interview.
       if (req.url.includes("/validate-token/") || req.url.includes("/join/")) return;
-      if (req.url.match(/\/api\/interviews\/[^/]+\/(answer|complete|events)/)) return;
       await authMiddleware(req, reply);
     }
   });

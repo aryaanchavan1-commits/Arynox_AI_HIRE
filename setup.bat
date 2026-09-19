@@ -86,6 +86,19 @@ if %ERRORLEVEL% NEQ 0 (
 )
 cd ..
 
+:: Install Python backend dependencies
+where python >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo [SETUP] Installing Python backend dependencies...
+    cd server-python
+    python -m pip install -r requirements.txt
+    if %ERRORLEVEL% NEQ 0 (
+        echo [WARN] Failed to install some Python dependencies. The backend may not start.
+    )
+    cd ..
+)
+
 echo.
 echo ============================================
 echo   Setup Complete!

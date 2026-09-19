@@ -8,6 +8,7 @@ import {
   ArrowLeft, Bot, User, Briefcase, Globe, Clock, Send,
   CheckCircle2, Loader2, Copy,
 } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 interface Candidate { id: string; name: string; email: string; }
 interface Job { id: string; title: string; }
@@ -31,8 +32,8 @@ export default function NewInterviewPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/candidates").then((r) => r.json()),
-      fetch("/api/jobs").then((r) => r.json()),
+      apiFetch("/api/candidates").then((r) => r.json()),
+      apiFetch("/api/jobs").then((r) => r.json()),
     ]).then(([c, j]) => {
       setCandidates(c.candidates || []);
       setJobs(j.jobs || []);
@@ -44,7 +45,7 @@ export default function NewInterviewPage() {
     e.preventDefault();
     setCreating(true);
     try {
-      const res = await fetch("/api/interviews", {
+      const res = await apiFetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

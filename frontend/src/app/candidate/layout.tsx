@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, User, FolderGit2, FileCheck, Video, Bot, LogOut } from "lucide-react";
+import { LayoutDashboard, User, FolderGit2, FileCheck, Video, LogOut } from "lucide-react";
 
 const navItems = [
   { href: "/candidate/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -19,7 +19,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-surface-950">
       <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-white/10 bg-surface-900/50">
         <div className="flex h-16 items-center gap-2 border-b border-white/10 px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600"><Bot className="h-5 w-5 text-white" /></div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600"><span className="text-sm font-bold text-white">AI</span></div>
           <span className="text-sm font-bold text-white">ARYNOX AI HIRE</span>
         </div>
         <nav className="flex-1 space-y-1 p-3">

@@ -116,7 +116,8 @@ class Database:
         cur.execute("INSERT INTO organizations VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (org_id, "Demo Corp", "demo-corp", None, None, None, None, user_id, now, now))
         cur.execute("INSERT INTO organization_members VALUES (%s,%s,%s,%s,%s)", ("mem-1", org_id, user_id, "recruiter", now))
         cur.execute("INSERT INTO candidates VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (candidate_id, org_id, None, "Priya Sharma", "priya@example.com", "+91 98765 43210", json.dumps(["React", "TypeScript", "Node.js"]), "3 years", "B.Tech Computer Science", "https://github.com/priyasharma", None, now, now))
-        cur.execute("INSERT INTO jobs VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (job_id, org_id, user_id, "Senior Frontend Developer", "Engineering", "Remote", "remote", "3-5 years", "Build amazing UIs with React and TypeScript", json.dumps(["React", "TypeScript", "CSS"]), json.dumps(["Next.js", "Tailwind"]), json.dumps(["React", "TypeScript", "Node.js", "PostgreSQL"]), "en", 3, 60, "active", now, now))
+        # NOTE: 18 columns, 18 placeholders, 18 values — keep them in sync
+        cur.execute("INSERT INTO jobs VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (job_id, org_id, user_id, "Senior Frontend Developer", "Engineering", "Remote", "remote", "3-5 years", "Build amazing UIs with React and TypeScript", json.dumps(["React", "TypeScript", "CSS"]), json.dumps(["Next.js", "Tailwind"]), json.dumps(["React", "TypeScript", "Node.js", "PostgreSQL"]), "en", 3, 60, "active", now, now))
 
     def fetchone(self, sql: str, params: tuple = ()) -> Optional[dict]:
         self._ensure()

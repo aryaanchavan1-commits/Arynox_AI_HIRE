@@ -5,24 +5,23 @@ import Link from "next/link";
 import {
   Brain, Mic, Shield, Github, BarChart3, Globe, Users,
   FileSearch, Zap, ArrowRight, Bot, Code2, Video,
-  ChevronRight, Play, Sparkles, Check, Mic2,
+  ChevronRight, Play, Sparkles, Check, Mic2, Eye, Monitor,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import { apiFetch } from "@/lib/utils";
 
 const Hero3D = dynamic(() => import("./hero-3d").then((m) => m.Hero3D), { ssr: false, loading: () => <div className="h-96" /> });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const features = [
   { icon: Brain, title: "AI Technical Interviews", description: "Adaptive AI that understands your job requirements and evaluates candidates with evidence-based questions.", color: "from-indigo-500 to-purple-500" },
-  { icon: Video, title: "Live AI Interviewer", description: "Realistic AI avatar with lip sync, facial expressions, and real-time voice interaction.", color: "from-violet-500 to-pink-500" },
+  { icon: Mic, title: "Live Voice Interviewer", description: "Real-time voice interaction with multiple Sarvam AI voices in English, Hindi, and Marathi.", color: "from-violet-500 to-pink-500" },
+  { icon: Eye, title: "OpenCV Proctoring", description: "Face detection, gaze tracking, expression analysis, and multi-face detection for fair interviews.", color: "from-amber-500 to-orange-500" },
+  { icon: Monitor, title: "Screen Recording", description: "Optional screen capture during interviews to verify candidate work environment.", color: "from-cyan-500 to-blue-500" },
   { icon: Code2, title: "Technical Assessments", description: "AI-generated assessments tailored to your specific job requirements.", color: "from-blue-500 to-cyan-500" },
   { icon: Github, title: "GitHub Verification", description: "Verify candidate contributions and code quality from their GitHub profile.", color: "from-gray-700 to-gray-900" },
-  { icon: FileSearch, title: "CV Analysis & RAG", description: "Intelligent CV parsing with company-specific knowledge base.", color: "from-emerald-500 to-teal-500" },
-  { icon: Mic2, title: "Multilingual Voice", description: "Interview in English, Hindi, or Marathi with AI speech recognition.", color: "from-orange-500 to-amber-500" },
+  { icon: Mic2, title: "Multi-Voice AI", description: "Choose from 30+ Sarvam AI voices for a personalized interview experience.", color: "from-orange-500 to-amber-500" },
   { icon: Shield, title: "Privacy-Aware Proctoring", description: "Ethical monitoring signals. Never automated hiring decisions.", color: "from-rose-500 to-red-500" },
   { icon: Users, title: "Candidate Profiles", description: "Comprehensive skill profiles with verified assessments.", color: "from-sky-500 to-blue-500" },
-  { icon: BarChart3, title: "Analytics & Reports", description: "AI-generated reports with technical scores and hiring recommendations.", color: "from-fuchsia-500 to-purple-500" },
 ];
 
 const steps = [
@@ -33,7 +32,7 @@ const steps = [
 ];
 
 const pricingPlans = [
-  { name: "Free", price: "\u20B90", period: "/month", description: "Try ARYNOX with limited features", features: ["5 AI Interviews", "10 Candidates", "3 Jobs", "Basic Assessments"], cta: "Get Started", popular: false },
+  { name: "Free", price: "\u20B90", period: "/month", description: "Try ARYNOX AI HIRE with limited features", features: ["5 AI Interviews", "10 Candidates", "3 Jobs", "Basic Assessments"], cta: "Get Started", popular: false },
   { name: "Starter", price: "\u20B94,999", period: "/month", description: "For small teams", features: ["50 AI Interviews", "100 Candidates", "10 Jobs", "GitHub Verification", "Reports"], cta: "Start Free Trial", popular: false },
   { name: "Growth", price: "\u20B914,999", period: "/month", description: "For growing companies", features: ["200 AI Interviews", "500 Candidates", "50 Jobs", "3D Avatar", "Analytics"], cta: "Start Free Trial", popular: true },
   { name: "Business", price: "\u20B939,999", period: "/month", description: "For established teams", features: ["Unlimited Interviews", "Unlimited Candidates", "Custom Integrations", "SLA"], cta: "Contact Sales", popular: false },
@@ -57,7 +56,7 @@ export function LandingPage() {
   const [stats, setStats] = useState({ interviews: 0, companies: 1, accuracy: 95, languages: 3 });
 
   useEffect(() => {
-    fetch(`${API_URL}/api/stats`).then((r) => r.json()).then((d) => {
+    apiFetch("/api/stats").then((r) => r.json()).then((d) => {
       setStats({ interviews: d.interviews || 0, companies: d.companies || 1, accuracy: d.accuracy || 95, languages: d.languages || 3 });
     }).catch(() => {});
   }, []);
@@ -68,8 +67,8 @@ export function LandingPage() {
       <nav className="fixed top-0 z-50 w-full border-b border-gray-100 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg shadow-brand-500/25">
-              <Bot className="h-5 w-5 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/25">
+              <span className="text-xs font-bold text-white tracking-tight">AI</span>
             </div>
             <span className="text-lg font-bold tracking-tight text-gray-900">ARYNOX AI HIRE</span>
           </div>
@@ -266,8 +265,8 @@ export function LandingPage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700">
-                <Bot className="h-4 w-4 text-white" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
+                <span className="text-[10px] font-bold text-white">AI</span>
               </div>
               <span className="font-bold text-gray-900">ARYNOX AI HIRE</span>
             </div>
@@ -275,7 +274,7 @@ export function LandingPage() {
               <Link href="/privacy" className="hover:text-gray-900 transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-gray-900 transition-colors">Terms</Link>
             </div>
-            <p className="text-sm text-gray-400">&copy; 2026 Arynox Technologies.</p>
+            <p className="text-sm text-gray-400">&copy; 2026 ARYNOX Technologies.</p>
           </div>
         </div>
       </footer>

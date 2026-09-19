@@ -1,0 +1,20 @@
+# ARYNOX AI HIRE — Python backend dependencies
+# Install with: pip install -r requirements.txt
+
+# Core API
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-dotenv>=1.0.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# LLM / Voice providers (async HTTP)
+httpx>=0.27.0
+
+# Auth
+pyjwt>=2.8.0
+
+# Proctoring (computer vision)
+opencv-python-headless>=4.8.0
+numpy>=1.24.0

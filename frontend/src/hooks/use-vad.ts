@@ -4,8 +4,8 @@ import { useRef, useCallback, useState, useEffect } from "react";
 
 interface VADOptions {
   threshold?: number;       // RMS threshold for speech detection (0-1)
-  silenceDelay?: number;    // ms of silence before marking as stopped
-  preSpeechBuffer?: number; // ms of audio to keep before speech start
+  silenceDelay?: number;    // ms of silence before marking speech as ended
+  preSpeechBuffer?: number; // ms of audio kept before speech start
   onSpeechStart?: () => void;
   onSpeechEnd?: (audioBlob: Blob) => void;
   onAudioLevel?: (level: number) => void;
@@ -18,6 +18,57 @@ interface VADResult {
   start: () => Promise<void>;
   stop: () => void;
   error: string | null;
+}
+
+const TARGET_SAMPLE_RATE = 16000;
+
+/** Encode Float32 PCM frames into a 16-bit mono WAV Blob. */
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);           // PCM
+  view.setUint16(22, 1, true);           // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
+  }
+
+  return new Blob([view], { type: "audio/wav" });
+}
+
+/** Simple linear-interpolation downsample. */
+function downsample(input: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (toRate >= fromRate) return input;
+  const ratio = fromRate / toRate;
+  const outLength = Math.floor(input.length / ratio);
+  const out = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const srcIdx = i * ratio;
+    const low = Math.floor(srcIdx);
+    const high = Math.min(low + 1, input.length - 1);
+    const frac = srcIdx - low;
+    out[i] = input[low] * (1 - frac) + input[high] * frac;
+  }
+  return out;
 }
 
 export function useVAD(options: VADOptions = {}): VADResult {
@@ -36,32 +87,86 @@ export function useVAD(options: VADOptions = {}): VADResult {
   const [error, setError] = useState<string | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const animFrameRef = useRef<number>(0);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const preSpeechBufferRef = useRef<Blob[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Capture state
   const isSpeakingRef = useRef(false);
-  const lastSpeechTime = useRef(0);
+  const sampleRateRef = useRef(48000);
+  const frameMsRef = useRef(0);
+  const maxPreFramesRef = useRef(0);
+  const preFramesRef = useRef<Float32Array[]>([]);
+  const speechFramesRef = useRef<Float32Array[]>([]);
+
+  // Keep latest callbacks in refs so the audio loop never uses stale closures
+  const onSpeechStartRef = useRef(onSpeechStart);
+  const onSpeechEndRef = useRef(onSpeechEnd);
+  const onAudioLevelRef = useRef(onAudioLevel);
+  useEffect(() => {
+    onSpeechStartRef.current = onSpeechStart;
+    onSpeechEndRef.current = onSpeechEnd;
+    onAudioLevelRef.current = onAudioLevel;
+  }, [onSpeechStart, onSpeechEnd, onAudioLevel]);
+
+  const finishUtterance = useCallback(() => {
+    if (!isSpeakingRef.current) return;
+    isSpeakingRef.current = false;
+    setIsSpeaking(false);
+
+    const frames = [...preFramesRef.current, ...speechFramesRef.current];
+    preFramesRef.current = [];
+    speechFramesRef.current = [];
+
+    if (frames.length === 0) return;
+    // Skip ultra-short blips (< 400ms) — usually coughs/clicks
+    const totalMs = frames.length * frameMsRef.current;
+    if (totalMs < 400) return;
+
+    const merged = mergeFrames(frames);
+    const downsampled = downsample(merged, sampleRateRef.current, TARGET_SAMPLE_RATE);
+    const wav = encodeWav(downsampled, TARGET_SAMPLE_RATE);
+    onSpeechEndRef.current?.(wav);
+  }, []);
 
   const cleanup = useCallback(() => {
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = 0;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (processorRef.current) {
+      processorRef.current.onaudioprocess = null;
+      try { processorRef.current.disconnect(); } catch { /* noop */ }
+      processorRef.current = null;
+    }
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect(); } catch { /* noop */ }
+      sourceRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(() => { /* noop */ });
       audioContextRef.current = null;
     }
+    isSpeakingRef.current = false;
+    preFramesRef.current = [];
+    speechFramesRef.current = [];
     setIsListening(false);
     setIsSpeaking(false);
     setAudioLevel(0);
   }, []);
 
   const start = useCallback(async () => {
+    if (audioContextRef.current) return; // already running
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -71,114 +176,91 @@ export function useVAD(options: VADOptions = {}): VADResult {
 
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
+      sampleRateRef.current = ctx.sampleRate;
 
       const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.8;
-      source.connect(analyser);
-      analyserRef.current = analyser;
+      sourceRef.current = source;
 
-      // Set up MediaRecorder for capturing audio
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-      mediaRecorderRef.current = recorder;
-      preSpeechBufferRef.current = [];
+      // ScriptProcessorNode is deprecated but universally supported; it avoids
+      // needing a separate AudioWorklet module file.
+      const bufferSize = 2048;
+      const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
+      processorRef.current = processor;
+      frameMsRef.current = (bufferSize / ctx.sampleRate) * 1000;
+      maxPreFramesRef.current = Math.max(1, Math.ceil(preSpeechBuffer / frameMsRef.current));
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          if (!isSpeakingRef.current) {
-            // Buffer pre-speech audio
-            preSpeechBufferRef.current.push(e.data);
-            // Keep only last N ms
-            const maxBuffers = Math.ceil(preSpeechBuffer / 100);
-            if (preSpeechBufferRef.current.length > maxBuffers) {
-              preSpeechBufferRef.current.shift();
-            }
-          } else {
-            // Accumulate speech audio
-            preSpeechBufferRef.current.push(e.data);
-          }
-        }
-      };
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
 
-      recorder.onstop = () => {
-        if (isSpeakingRef.current && preSpeechBufferRef.current.length > 0) {
-          const blob = new Blob(preSpeechBufferRef.current, { type: "audio/webm" });
-          onSpeechEnd?.(blob);
-          preSpeechBufferRef.current = [];
-        }
-      };
-
-      recorder.start(100); // 100ms chunks
-      setIsListening(true);
-
-      // VAD loop
-      const dataArray = new Float32Array(analyser.frequencyBinCount);
-      let frameCount = 0;
-
-      const checkAudio = () => {
-        analyser.getFloatTimeDomainData(dataArray);
+        // Compute RMS
         let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
-        const rms = Math.sqrt(sum / dataArray.length);
+        for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+        const rms = Math.sqrt(sum / input.length);
 
-        // Throttle audio level updates to ~15fps to avoid re-render storm
-        frameCount++;
-        if (frameCount % 4 === 0) {
-          const normalizedLevel = Math.min(1, rms * 5);
-          setAudioLevel(normalizedLevel);
-          onAudioLevel?.(normalizedLevel);
+        if (isSpeakingRef.current) {
+          speechFramesRef.current.push(new Float32Array(input));
         }
 
-        const now = Date.now();
         const speaking = rms > threshold;
-
         if (speaking) {
-          lastSpeechTime.current = now;
           if (!isSpeakingRef.current) {
             isSpeakingRef.current = true;
             setIsSpeaking(true);
-            onSpeechStart?.();
+            speechFramesRef.current = [];
+            onSpeechStartRef.current?.();
           }
-          // Reset silence timer
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = setTimeout(() => {
-            if (isSpeakingRef.current) {
-              isSpeakingRef.current = false;
-              setIsSpeaking(false);
-              // Stop recorder to trigger onstop with accumulated audio
-              if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                mediaRecorderRef.current.stop();
-                // Restart for next utterance
-                setTimeout(() => {
-                  if (mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
-                    try { mediaRecorderRef.current.start(100); } catch {}
-                  }
-                }, 50);
-              }
-            }
-          }, silenceDelay);
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
+          // Keep the silence timer armed so trailing silence ends the utterance
+          silenceTimerRef.current = setTimeout(finishUtterance, silenceDelay);
+        } else if (isSpeakingRef.current && !silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(finishUtterance, silenceDelay);
         }
 
-        animFrameRef.current = requestAnimationFrame(checkAudio);
+        // Maintain rolling pre-speech buffer
+        if (!isSpeakingRef.current) {
+          preFramesRef.current.push(new Float32Array(input));
+          if (preFramesRef.current.length > maxPreFramesRef.current) {
+            preFramesRef.current.shift();
+          }
+        }
       };
 
-      animFrameRef.current = requestAnimationFrame(checkAudio);
+      source.connect(processor);
+      // Required for ScriptProcessor to pull audio in Chrome; route to a zero-gain mute
+      const silentGain = ctx.createGain();
+      silentGain.gain.value = 0;
+      processor.connect(silentGain);
+      silentGain.connect(ctx.destination);
+
+      setIsListening(true);
     } catch (err: any) {
-      setError(err.message || "Failed to access microphone");
+      cleanup();
+      setError(err?.message || "Failed to access microphone");
     }
-  }, [threshold, silenceDelay, preSpeechBuffer, onSpeechStart, onSpeechEnd, onAudioLevel]);
+  }, [threshold, silenceDelay, preSpeechBuffer, cleanup, finishUtterance]);
 
   const stop = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
+    finishUtterance();
     cleanup();
-  }, [cleanup]);
+  }, [finishUtterance, cleanup]);
 
   useEffect(() => {
     return () => cleanup();
   }, [cleanup]);
 
   return { isListening, isSpeaking, audioLevel, start, stop, error };
+}
+
+function mergeFrames(frames: Float32Array[]): Float32Array {
+  const total = frames.reduce((s, f) => s + f.length, 0);
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (const f of frames) {
+    out.set(f, offset);
+    offset += f.length;
+  }
+  return out;
 }

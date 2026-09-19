@@ -36,9 +36,9 @@ echo   Frontend: http://localhost:3000
 echo   Backend:  http://localhost:8000
 echo.
 
-:: Start Python backend
+:: Start Python backend (config.py loads APP_MODE from .env; only PORT is defaulted here)
 echo [START] Starting Python backend on port 8000...
-start "ARYNOX Backend" cmd /k "cd /d server-python && set APP_MODE=local && set PORT=8000 && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
+start "ARYNOX Backend" cmd /k "cd /d server-python && set PORT=8000 && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
 
 :: Wait for backend to initialize
 echo [WAIT] Waiting for backend...

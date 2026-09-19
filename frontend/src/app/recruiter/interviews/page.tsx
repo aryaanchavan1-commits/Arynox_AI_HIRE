@@ -8,6 +8,7 @@ import {
   MoreVertical, Eye, Send, Trash2, CheckCircle2, XCircle,
   Loader2, AlertCircle, Copy, ExternalLink, Bot,
 } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 interface Interview {
   id: string;
@@ -35,7 +36,7 @@ export default function RecruiterInterviewsPage() {
 
   const fetchInterviews = async () => {
     try {
-      const res = await fetch("/api/interviews");
+      const res = await apiFetch("/api/interviews");
       const data = await res.json();
       setInterviews(data.interviews || []);
     } catch {}

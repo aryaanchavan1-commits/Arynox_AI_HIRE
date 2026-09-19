@@ -14,7 +14,20 @@ async def avatar_status():
     tavus_key = config.TAVUS_API_KEY
 
     if did_key:
-        return {"available": True, "provider": "d-id", "mockMode": False}
+        # Check if D-ID account actually has credits
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get("https://api.d-id.com/talks",
+                    headers={"Authorization": f"Basic {did_key}", "Accept": "application/json"})
+                if resp.status_code == 200:
+                    return {"available": True, "provider": "d-id", "mockMode": False}
+                elif resp.status_code == 402:
+                    return {"available": False, "provider": "d-id", "mockMode": True, "error": "D-ID account has no credits"}
+                else:
+                    return {"available": False, "provider": "d-id", "mockMode": True, "error": f"D-ID API error: {resp.status_code}"}
+        except Exception:
+            return {"available": False, "provider": "d-id", "mockMode": True, "error": "D-ID API unreachable"}
     if tavus_key:
         return {"available": True, "provider": "tavus", "mockMode": False}
 
